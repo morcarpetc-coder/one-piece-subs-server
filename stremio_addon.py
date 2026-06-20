@@ -16,48 +16,53 @@ app.add_middleware(
 os.makedirs("output_subs", exist_ok=True)
 app.mount("/subs", StaticFiles(directory="output_subs"), name="subs")
 
-ONE_PIECE_IMDB_ID = "tt0388629"
-
 @app.get("/manifest.json")
 def get_manifest():
     return {
-        "id": "com.mor.onepiecesubs",
-        "version": "1.0.1", # עלינו גרסה כדי שסטרמיו תתאפס
-        "name": "One Piece AI Subs",
+        "id": "com.mor.ops.v3", # מזהה חדש לחלוטין! סטרמיו תחשוב שזה תוסף אחר לגמרי
+        "version": "1.0.2",
+        "name": "One Piece AI Subs 🔥", # הוספנו סמיילי כדי שנדע בוודאות שהתקנו את החדש
         "description": "Hebrew subtitles translated by AI for One Piece.",
         "resources": ["subtitles"],
-        "types": ["series", "anime", "movie"], # פתחנו את התוסף לכל סוגי התוכן
+        "types": ["series", "anime", "movie"],
         "catalogs": [],
-        "idPrefixes": ["tt", "kitsu"] # הוספנו תמיכה במזהי אנימה
+        "idPrefixes": ["tt", "kitsu", "anilist", "myanimelist"] # עונים לכל שפות האנימה שקיימות
     }
 
 @app.get("/subtitles/{type}/{video_id}.json")
 def get_subtitles(request: Request, type: str, video_id: str):
-    # שורת איתור באגים - תדפיס ב-Render כל פנייה של סטרמיו לשרת
-    print(f"🔥 STREMIO ASKED FOR: type={type}, video_id={video_id}")
+    # flush=True - פקודה שמכריחה את פייתון לזרוק את ההדפסה ל-Render באותה שנייה!
+    print(f"🔥 STREMIO ASKED FOR: type={type}, video_id={video_id}", flush=True)
     
     parts = video_id.split(":")
+    episode = None
     
-    # בודקים אם המזהה תואם לוואן פיס
-    if len(parts) >= 3 and parts[0] == ONE_PIECE_IMDB_ID:
-        season = parts[1]
-        episode = parts[2]
-        
-        expected_filename = f"one_piece_S{season.zfill(2)}E{episode}.srt"
+    # שליפה אגרסיבית של מספר הפרק מתוך הבקשה של סטרמיו
+    if len(parts) >= 3:
+        episode = parts[-1]
+    
+    if episode:
+        expected_filename = f"one_piece_S01E{episode}.srt"
         file_path = os.path.join("output_subs", expected_filename)
         
+        print(f"🔍 Searching for file: {file_path}", flush=True)
+        
         if os.path.exists(file_path):
-            base_url = str(request.base_url).rstrip("/")
+            base_url = str(request.base_url).rstrip("/").replace("http://", "https://")
+            print(f"✅ File found! Sending to Stremio.", flush=True)
+            
             return {
                 "subtitles": [
                     {
                         "id": f"heb-op-{episode}",
                         "url": f"{base_url}/subs/{expected_filename}",
                         "lang": "heb",
-                        "title": f"AI Translated - Ep {episode}"
+                        "title": f"AI Translated - Ep {episode} 🇮🇱" # הוספנו דגל לזיהוי קל
                     }
                 ]
             }
+        else:
+            print(f"❌ File not found.", flush=True)
             
     return {"subtitles": []}
 
