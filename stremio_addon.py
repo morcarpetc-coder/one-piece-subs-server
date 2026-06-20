@@ -22,20 +22,24 @@ ONE_PIECE_IMDB_ID = "tt0388629"
 def get_manifest():
     return {
         "id": "com.mor.onepiecesubs",
-        "version": "1.0.0",
+        "version": "1.0.1", # עלינו גרסה כדי שסטרמיו תתאפס
         "name": "One Piece AI Subs",
         "description": "Hebrew subtitles translated by AI for One Piece.",
         "resources": ["subtitles"],
-        "types": ["series"],
+        "types": ["series", "anime", "movie"], # פתחנו את התוסף לכל סוגי התוכן
         "catalogs": [],
-        "idPrefixes": ["tt"]
+        "idPrefixes": ["tt", "kitsu"] # הוספנו תמיכה במזהי אנימה
     }
 
 @app.get("/subtitles/{type}/{video_id}.json")
 def get_subtitles(request: Request, type: str, video_id: str):
+    # שורת איתור באגים - תדפיס ב-Render כל פנייה של סטרמיו לשרת
+    print(f"🔥 STREMIO ASKED FOR: type={type}, video_id={video_id}")
+    
     parts = video_id.split(":")
     
-    if len(parts) == 3 and parts[0] == ONE_PIECE_IMDB_ID:
+    # בודקים אם המזהה תואם לוואן פיס
+    if len(parts) >= 3 and parts[0] == ONE_PIECE_IMDB_ID:
         season = parts[1]
         episode = parts[2]
         
@@ -43,9 +47,7 @@ def get_subtitles(request: Request, type: str, video_id: str):
         file_path = os.path.join("output_subs", expected_filename)
         
         if os.path.exists(file_path):
-            # השורת קסם: מזהה אוטומטית את הכתובת בענן במקום לכתוב אותה ידנית
             base_url = str(request.base_url).rstrip("/")
-            
             return {
                 "subtitles": [
                     {
@@ -61,6 +63,5 @@ def get_subtitles(request: Request, type: str, video_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    # שרתי ענן (כמו Render) מספקים פורט משתנה, לכן אנחנו מושכים אותו מהסביבה
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
