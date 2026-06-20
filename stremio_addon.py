@@ -6,6 +6,7 @@ import re
 
 app = FastAPI()
 
+# הגדרת CORS מלאה ותקנית עבור סטרמיו בכל הפלטפורמות
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,66 +17,76 @@ app.add_middleware(
 
 os.makedirs("output_subs", exist_ok=True)
 
-# 1. הראדאר האולטימטיבי: מדפיס ללוג כל נשימה של סטרמיו
+# מנגנון הגנה גלובלי שמדפיס כל פנייה ומנטרל לחלוטין זיכרון מטמון ב-Edge
 @app.middleware("http")
-async def log_all_requests(request: Request, call_next):
-    print(f"🌍 INCOMING: {request.method} {request.url.path}", flush=True)
+async def host_interceptor(request: Request, call_next):
+    print(f"📡 [NET INCOMING] Path accessed: {request.url.path}", flush=True)
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    print(f"✅ OUTGOING: {response.status_code}", flush=True)
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     return response
 
-# 2. תעודת זהות חדשה ללא שום מגבלות סינון לסטרמיו
 @app.get("/manifest.json")
-@app.get("/{any_prefix}/manifest.json")
 def get_manifest():
     return {
-        "id": "com.mor.ops.ultimate",
-        "version": "1.0.6",
-        "name": "One Piece AI Subs 🌟", # סמל כוכב
-        "description": "Hebrew subtitles translated by AI",
+        "id": "com.mor.onepiece.ai.subs.official.v1", # מזהה ייחודי חדש ונקי
+        "version": "2.0.0",
+        "name": "One Piece AI Subs 👑", # סימן של כתר לזיהוי הגרסה הסופית
+        "description": "Hebrew subtitles translated by AI for One Piece",
         "resources": ["subtitles"],
-        "types": ["series", "anime", "movie", "tv", "other"], # פתוח להכל
-        "catalogs": [] # מחקנו את ה-idPrefixes לגמרי!
+        "types": ["series", "anime"],
+        "catalogs": [],
+        "idPrefixes": ["tt", "kitsu", "anilist", "mal"] # קריטי! בלעדי זה סטרמיו לא תשלח בקשות
     }
 
-# 3. נתיב "חסין כדורים" - בולע כל בקשה ושולף ממנה את המספר בסוף
-@app.get("/subtitles/{type}/{video_id:path}")
-@app.get("/{any_prefix}/subtitles/{type}/{video_id:path}")
-def get_subtitles(request: Request, type: str, video_id: str):
-    print(f"🌟 ADDON TRIGGERED: type={type}, video_id={video_id}", flush=True)
+@app.get("/subtitles/{type}/{video_id}.json")
+async def get_subtitles(type: str, video_id: str, request: Request):
+    print(f"🎯 [ADDON TRIGGERED] Video ID requested: {video_id}", flush=True)
     
     clean_id = video_id.replace(".json", "")
-    # שולף רק את המספרים מתוך תעודת הזהות של הפרק
-    numbers = re.findall(r'\d+', clean_id)
+    parts = clean_id.split(":")
     
-    if numbers:
-        ep_num = numbers[-1] # לוקח את המספר האחרון (עוקף את כל הפורמטים המוזרים של Kitsu ו-Torrentio)
-        expected_filename = f"one_piece_S01E{ep_num}.srt"
-        file_path = os.path.join("output_subs", expected_filename)
+    if not parts or len(parts) < 2:
+        print("⚠️ [WARN] Request format not recognized.", flush=True)
+        return {"subtitles": []}
         
-        if os.path.exists(file_path):
-            base_url = str(request.base_url).rstrip("/").replace("http://", "https://")
-            return {
-                "subtitles": [
-                    {
-                        "id": f"heb-op-{ep_num}",
-                        "url": f"{base_url}/subs/{expected_filename}",
-                        "lang": "heb",
-                        "title": f"AI Translated - Ep {ep_num} 🇮🇱"
-                    }
-                ]
-            }
+    # חילוץ אגרסיבי של מספר הפרק (האיבר האחרון במערך התשובה של סטרמיו)
+    episode = parts[-1]
+    
+    expected_filename = f"one_piece_S01E{episode}.srt"
+    file_path = os.path.join("output_subs", expected_filename)
+    
+    print(f"🔍 [FILE SEARCH] Searching for file at: {file_path}", flush=True)
+    
+    if os.path.exists(file_path):
+        base_url = str(request.base_url).rstrip("/")
+        # אבטחת פרוטוקול HTTPS עבור אפליקציות סטרמיו בטלוויזיה/וב
+        if "onrender.com" in base_url and not base_url.startswith("https://"):
+            base_url = base_url.replace("http://", "https://")
             
+        print(f"✅ [FOUND] Sending subtitle payload for episode {episode} to Stremio", flush=True)
+        return {
+            "subtitles": [
+                {
+                    "id": f"ai-heb-op-{episode}",
+                    "url": f"{base_url}/subs/{expected_filename}",
+                    "lang": "heb",
+                    "title": f"עברית AI - פרק {episode} 🇮🇱"
+                }
+            ]
+        }
+        
+    print(f"❌ [NOT FOUND] Missing SRT file for episode {episode}", flush=True)
     return {"subtitles": []}
 
 @app.get("/subs/{filename}")
-@app.get("/{any_prefix}/subs/{filename}")
-def serve_sub_file(filename: str):
+def serve_subtitle_file(filename: str):
     file_path = os.path.join("output_subs", filename)
     if os.path.exists(file_path):
-        return FileResponse(file_path, media_type="application/x-subrip")
-    return JSONResponse(status_code=404, content={"error": "Not found"})
+        # הגשת הקובץ עם מזהה המדיה הרשמי של כתוביות כדי למנוע חסימת נגן
+        return FileResponse(file_path, media_type="application/x-subrip", filename=filename)
+    return JSONResponse(status_code=404, content={"error": "Subtitle file not found"})
 
 if __name__ == "__main__":
     import uvicorn
