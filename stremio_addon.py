@@ -5,7 +5,6 @@ import os
 
 app = FastAPI()
 
-# פתיחת כל שערי האבטחה (CORS) לסטרמיו
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,41 +15,41 @@ app.add_middleware(
 
 os.makedirs("output_subs", exist_ok=True)
 
-@app.get("/manifest.json")
+# נתיבים חדשים לחלוטין (/v5/) שעוקפים את זיכרון הרפאים של השרת
+@app.get("/v5/manifest.json")
 def get_manifest(response: Response):
-    # אוסר על הדפדפן וסטרמיו לשמור את התוסף בזיכרון
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Cache-Control"] = "no-store, max-age=0"
     return {
-        "id": "com.mor.ops.v4", # שינינו תעודת זהות לחלוטין
-        "version": "1.0.3",
-        "name": "One Piece AI Subs ⚓", # סמל העוגן החדש
-        "description": "Hebrew subtitles translated by AI for One Piece.",
+        "id": "com.mor.ops.v5",
+        "version": "1.0.4",
+        "name": "One Piece AI Subs 🚀", # סמל של טיל שנדע שהתקנו נכון
+        "description": "Hebrew subtitles translated by AI",
         "resources": ["subtitles"],
         "types": ["series", "anime", "movie"],
         "catalogs": [],
-        "idPrefixes": ["tt", "kitsu", "anilist", "myanimelist"]
+        "idPrefixes": ["tt", "kitsu", "anilist", "tmdb"]
     }
 
-@app.get("/subtitles/{type}/{video_id}.json")
+@app.get("/v5/subtitles/{type}/{video_id}.json")
 def get_subtitles(request: Request, type: str, video_id: str, response: Response):
-    # הפקודה הקריטית: אוסרת על רנדר (הענן) לשמור תשובות ריקות ישנות!
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    
-    print(f"⚓ STREMIO ASKED FOR: type={type}, video_id={video_id}", flush=True)
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    print(f"🚀 STREMIO REQUEST REACHED PYTHON: {type} | {video_id}", flush=True)
     
     parts = video_id.split(":")
     episode = None
     
     if len(parts) >= 3:
         episode = parts[-1]
-    
+        
     if episode:
         expected_filename = f"one_piece_S01E{episode}.srt"
         file_path = os.path.join("output_subs", expected_filename)
         
         if os.path.exists(file_path):
             base_url = str(request.base_url).rstrip("/").replace("http://", "https://")
-            print(f"✅ FOUND SUBTITLE: Sending to Stremio", flush=True)
+            print("✅ SUBTITLE FOUND! Sending to Stremio.", flush=True)
+            
+            # שולחים לסטרמיו שתי תוויות כדי להבטיח זיהוי של השפה
             return {
                 "subtitles": [
                     {
@@ -58,21 +57,26 @@ def get_subtitles(request: Request, type: str, video_id: str, response: Response
                         "url": f"{base_url}/subs/{expected_filename}",
                         "lang": "heb",
                         "title": f"AI Translated - Ep {episode} 🇮🇱"
+                    },
+                    {
+                        "id": f"he-op-{episode}",
+                        "url": f"{base_url}/subs/{expected_filename}",
+                        "lang": "he",
+                        "title": f"AI Translated (HE) - Ep {episode} 🇮🇱"
                     }
                 ]
             }
             
-    print(f"❌ NOT FOUND for episode {episode}", flush=True)
+    print("❌ SUBTITLE NOT FOUND IN FOLDER.", flush=True)
     return {"subtitles": []}
 
-# נתיב חכם להורדת הקובץ שפותר בעיות חסימה של נגנים
 @app.get("/subs/{filename}")
 def serve_sub_file(filename: str, response: Response):
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Cache-Control"] = "no-store, max-age=0"
     file_path = os.path.join("output_subs", filename)
     if os.path.exists(file_path):
         return FileResponse(file_path, media_type="text/plain")
-    return {"error": "Subtitle not found"}
+    return {"error": "Not found"}
 
 if __name__ == "__main__":
     import uvicorn
